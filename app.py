@@ -1,10 +1,14 @@
 import streamlit as st
 import pandas as pd
 import os
+import urllib.parse
 
 # Configuration
 EXCEL_FILE = "Price List.xlsx"
 ADMIN_PASSWORD = "your_secret_password"  # Change this to your preferred admin password
+STORE_PHONE_NUMBER = "+639751005382"    # CHANGE THIS to your store's actual phone number!
+GCASH_NUMBER = "0906 672 2062"          # Displayed to customers if they choose GCash
+GCASH_NAME = "SU***A M."                # Displayed to customers for GCash verification
 
 st.set_page_config(page_title="Store POS & Price Checker", page_icon="💰", layout="wide")
 st.title("🏪 Store POS & Price Checker")
@@ -135,7 +139,6 @@ with main_col:
         ws_target = get_wholesale_threshold(p_name)
         rule_tag = f" (WS @ {ws_target}+ pcs)" if ws_target else ""
 
-        # Dynamic columns with vertical centering so price/buttons align with the 1.5x larger product text
         if st.session_state.app_mode == "Calculator Steroids":
             item_col1, item_col2, item_col3, item_col4 = st.columns([2.5, 1, 1, 0.8], vertical_alignment="center")
         else:
@@ -164,17 +167,19 @@ with main_col:
                     st.rerun()
         st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
 
-# 3. Cart Panel (Only shows up in Calculator Steroids mode)
+# 3. Cart Panel, Order Fulfillment, and Payments Integration
 if st.session_state.app_mode == "Calculator Steroids":
     with cart_col:
         st.subheader("🛒 Current Order Receipt")
         
         if not st.session_state.cart:
             st.info("Cart is empty.")
+            items_total = 0.0
             total_bill = 0.0
         else:
-            total_bill = 0.0
+            items_total = 0.0
             items_to_remove = []
+            order_items_text = ""
             
             for name, current_qty in list(st.session_state.cart.items()):
                 item_data = df[df["Product name"] == name].iloc[0]
@@ -186,7 +191,10 @@ if st.session_state.app_mode == "Calculator Steroids":
                 active_price = w_price if is_wholesale else r_price
                 
                 subtotal = active_price * current_qty
-                total_bill += subtotal
+                items_total += subtotal
+                
+                badge_text = " (WS)" if is_wholesale else ""
+                order_items_text += f"- {current_qty}x {name}{badge_text} @ ₱{active_price:,.2f} = ₱{subtotal:,.2f}\n"
                 
                 rc1, rc2, rc3 = st.columns([2.2, 0.8, 0.5])
                 with rc1:
@@ -204,9 +212,67 @@ if st.session_state.app_mode == "Calculator Steroids":
                 del st.session_state.cart[name]
                 st.rerun()
                 
+            st.markdown(f"**Items Subtotal:** ₱{items_total:,.2f}")
+            
+            # --- CUSTOMER FULFILLMENT & PAYMENT INTEGRATION ---
+            st.markdown("---")
+            st.markdown("#### 📱 Customer Checkout Options")
+            
+            cust_name = st.text_input("Customer Name / Table Number:", placeholder="e.g., Juan / Table 4")
+            
+            # Delivery Mode / Service Charges Selection
+            service_mode = st.radio("Fulfillment Method:", ["Store Pickup / Dine-in (₱0)", "Delivery (Apply Charge)"], horizontal=True)
+            
+            delivery_fee = 0.0
+            if service_mode == "Delivery (Apply Charge)":
+                delivery_fee = st.number_input("Delivery Charge (₱):", min_value=0.0, step=5.0, value=40.0)
+            
+            total_bill = items_total + delivery_fee
             st.markdown(f"### 🧾 Total Bill: ₱{total_bill:,.2f}")
             
-            cash_received = st.number_input("💵 Cash Received:", min_value=0.0, step=20.0, value=0.0)
+            # Payment Methods Setup
+            pay_method = st.selectbox("Select Payment Method:", ["Cash on Delivery (COD) / Counter Cash", "GCash Online Transfer"])
+            
+            gcash_ref = ""
+            if pay_method == "GCash Online Transfer":
+                st.info(f"Please send payment to:\n**GCash:** {GCASH_NUMBER}\n**Name:** {GCASH_NAME}")
+                gcash_ref = st.text_input("GCash Reference No. (Last 4 or full digits):", placeholder="e.g., 9012")
+
+            # Constructing the comprehensive text summary block
+            final_msg = f"--- NEW ORDER ---\n"
+            if cust_name:
+                final_msg += f"Customer: {cust_name}\n"
+            final_msg += f"Fulfillment: {service_mode}\n"
+            final_msg += f"Payment Method: {pay_method}\n"
+            if pay_method == "GCash Online Transfer" and gcash_ref:
+                final_msg += f"GCash Ref: #{gcash_ref}\n"
+            final_msg += f"\nItems:\n{order_items_text}"
+            if delivery_fee > 0:
+                final_msg += f"Delivery Charge: ₱{delivery_fee:,.2f}\n"
+            final_msg += f"Total Amount: ₱{total_bill:,.2f}"
+                
+            encoded_sms = urllib.parse.quote(final_msg)
+            sms_href = f"sms:{STORE_PHONE_NUMBER}?&body={encoded_sms}"
+            
+            # Form submission validator logic block
+            can_submit = True
+            if pay_method == "GCash Online Transfer" and not gcash_ref:
+                can_submit = False
+                st.warning("⚠️ Please provide your GCash reference number to enable order submission.")
+                
+            if can_submit:
+                st.markdown(
+                    f'<a href="{sms_href}" target="_blank" style="text-decoration: none;">'
+                    f'<div style="background-color: #25D366; color: white; text-align: center; '
+                    f'padding: 14px; font-weight: bold; border-radius: 8px; margin-top: 10px; margin-bottom: 20px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">'
+                    f'📩 Submit & Send Order via Text Message'
+                    f'</div></a>', 
+                    unsafe_allow_html=True
+                )
+            # --------------------------------------------------
+
+            st.markdown("---")
+            cash_received = st.number_input("💵 Cash Received (Staff Counter Only):", min_value=0.0, step=20.0, value=0.0)
             if cash_received > 0:
                 change = cash_received - total_bill
                 if change >= 0:
