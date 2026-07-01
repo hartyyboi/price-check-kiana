@@ -74,30 +74,66 @@ def get_wholesale_threshold(product_name):
     if not rule.empty: return int(rule.iloc[0]["Target Qty"])
     return None
 
+# Session State Initialization
 if "cart" not in st.session_state: st.session_state.cart = {}
 if "qty_multiplier" not in st.session_state: st.session_state.qty_multiplier = 1
-if "admin_authenticated" not in st.session_state: st.session_state.admin_authenticated = False
+if "staff_mode" not in st.session_state: st.session_state.staff_mode = "Live Orders Counter Board"
 
 # ==========================================================
 # 🛑 VIEW 1: STAFF REGISTER & ORDERS SCREEN (?view=staff)
 # ==========================================================
 if is_staff_link:
-    st.title("🏪 Counter POS & Master Dashboard")
+    st.sidebar.title("👑 Staff Navigation")
     
-    pwd_input = st.sidebar.text_input("Admin Password Login", type="password")
-    if pwd_input == ADMIN_PASSWORD:
-        st.session_state.admin_authenticated = True
-        st.sidebar.success("Authenticated Counter Master ✅")
-    else:
-        st.session_state.admin_authenticated = False
+    # Mode selector buttons inside the sidebar
+    if st.sidebar.button("📥 Live Orders Board", use_container_width=True, type="primary" if st.session_state.staff_mode == "Live Orders Counter Board" else "secondary"):
+        st.session_state.staff_mode = "Live Orders Counter Board"
+        st.rerun()
         
-    admin_tab1, admin_tab2 = st.tabs(["📥 LIVE ORDERS COUNTER BOARD", "🛠️ INVENTORY & SETTINGS"])
-    
-    with admin_tab1:
-        st.subheader("📋 Real-Time Incoming Pending Orders Queue")
+    if st.sidebar.button("🔍 Price Checker", use_container_width=True, type="primary" if st.session_state.staff_mode == "Price Checker" else "secondary"):
+        st.session_state.staff_mode = "Price Checker"
+        st.rerun()
+        
+    if st.sidebar.button("💪 Calculator on Steroids", use_container_width=True, type="primary" if st.session_state.staff_mode == "Calculator on Steroids" else "secondary"):
+        st.session_state.staff_mode = "Calculator on Steroids"
+        st.rerun()
+
+    st.sidebar.markdown("---")
+    pwd_input = st.sidebar.text_input("Admin Password (To Edit Inventory)", type="password")
+    admin_authenticated = (pwd_input == ADMIN_PASSWORD)
+
+    # --- MODE 1: LIVE ORDERS COUNTER BOARD ---
+    if st.session_state.staff_mode == "Live Orders Counter Board":
+        st.title("📥 Live Orders Counter Board")
         orders_df = load_orders()
+        
+        # Calculate dynamic waiting metrics for notifications
+        pending_orders = orders_df[orders_df["Status"] == "Pending ⏳"]
+        num_pending = len(pending_orders)
+        
+        if num_pending > 0:
+            # Parse the oldest order timestamp
+            oldest_time_str = pending_orders.iloc[0]["Timestamp"]
+            try:
+                oldest_time = datetime.strptime(oldest_time_str, "%Y-%m-%d %H:%M:%S")
+                time_delta = datetime.now() - oldest_time
+                minutes_waiting = int(time_delta.total_seconds() / 60)
+                
+                if minutes_waiting == 0:
+                    time_status = "Just now"
+                else:
+                    time_status = f"{minutes_waiting} mins ago"
+            except Exception:
+                time_status = oldest_time_str
+                
+            st.error(f"🚨 **Notification:** There are **{num_pending} pending order(s)** waiting! Oldest unhandled order arrived **{time_status}**.")
+        else:
+            st.success("✅ **Notification:** All caught up! 0 pending orders left in queue.")
+
+        st.markdown("---")
+        
         if orders_df.empty:
-            st.info("No incoming orders currently recorded.")
+            st.info("No incoming orders currently recorded in history.")
         else:
             for idx, row in orders_df.iloc[::-1].iterrows():
                 status = row["Status"]
@@ -109,7 +145,7 @@ if is_staff_link:
                     f'<div style="background-color: {card_color}; border-left: 6px solid {border}; '
                     f'padding: 12px; border-radius: 5px; margin-bottom: 10px;">'
                     f'<h4>👤 {row["Customer"]} ({row["Fulfillment"]})</h4>'
-                    f'<p style="margin:2px 0;">⏰ {row["Timestamp"]} | 💳 Mode: {row["Payment"]} (Ref: {row["Ref No"]})</p>'
+                    f'<p style="margin:2px 0;">⏰ Received: {row["Timestamp"]} | 💳 Mode: {row["Payment"]} (Ref: {row["Ref No"]})</p>'
                     f'</div>', unsafe_allow_html=True
                 )
                 o_col1, o_col2, o_col3 = st.columns([2.5, 1, 1])
@@ -123,13 +159,105 @@ if is_staff_link:
                     if status != "Cancelled ❌" and st.button("❌ Cancel", key=f"can_{row['Timestamp']}"):
                         update_order_status(row["Timestamp"], "Cancelled ❌"); st.rerun()
                 st.markdown("---")
+
+    # --- MODE 2: STAFF PRICE CHECKER ---
+    elif st.session_state.staff_mode == "Price Checker":
+        st.title("🔍 Quick Counter Price Lookup")
+        search_query = st.text_input("Search Item Name...", placeholder="Type here to instantly find items...")
+        filtered_df = df[df["Product name"].astype(str).str.contains(search_query, case=False, na=False)] if search_query else df.head(15)
+
+        for idx, row in filtered_df.iterrows():
+            p_name = row["Product name"]
+            p_price = float(row["Unit Price"]) if pd.notna(row["Unit Price"]) else 0.0
+            p_ws = float(row["Wholesale"]) if pd.notna(row["Wholesale"]) else 0.0
+            ws_target = get_wholesale_threshold(p_name)
+            
+            sc1, sc2, sc3 = st.columns([3, 1.5, 1.5])
+            with sc1:
+                st.markdown(f"### {p_name}")
+                if ws_target: st.caption(f"Wholesale triggers at {ws_target} items")
+            with sc2: st.markdown(f"**Retail:** ₱{p_price:,.2f}")
+            with sc3: st.markdown(f"**Wholesale:** ₱{p_ws:,.2f}")
+            st.markdown("<hr style='margin: 4px 0px; border-top: 1px solid #f1f1f1;'>", unsafe_allow_html=True)
+
+    # --- MODE 3: CALCULATOR ON STEROIDS ---
+    elif st.session_state.staff_mode == "Calculator on Steroids":
+        st.title("💪 Calculator on Steroids (Walk-In Register)")
+        main_col, cart_col = st.columns([1.8, 1.2])
+        
+        with main_col:
+            # Multiplier configuration bar
+            s_col1, s_col2, s_col3, s_col4, s_col5 = st.columns([1, 1, 1, 1, 2])
+            with s_col1:
+                if st.button("x1", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 1 else "primary"): st.session_state.qty_multiplier = 1; st.rerun()
+            with s_col2:
+                if st.button("x6", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 6 else "primary"): st.session_state.qty_multiplier = 6; st.rerun()
+            with s_col3:
+                if st.button("x10", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 10 else "primary"): st.session_state.qty_multiplier = 10; st.rerun()
+            with s_col4:
+                if st.button("x12", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 12 else "primary"): st.session_state.qty_multiplier = 12; st.rerun()
+            with s_col5:
+                custom_mult = st.number_input("Custom Qty:", min_value=1, value=int(st.session_state.qty_multiplier), step=1)
+                if custom_mult != st.session_state.qty_multiplier: st.session_state.qty_multiplier = custom_mult; st.rerun()
+
+            st.info(f"🚀 **Active Multiplier:** Tapping Add inserts **{st.session_state.qty_multiplier}** pc(s).")
+            
+            search_query = st.text_input("Quick Counter Scan/Search...", placeholder="Filter list...")
+            filtered_df = df[df["Product name"].astype(str).str.contains(search_query, case=False, na=False)] if search_query else df.head(10)
+
+            for idx, row in filtered_df.iterrows():
+                p_name = row["Product name"]
+                p_price = float(row["Unit Price"]) if pd.notna(row["Unit Price"]) else 0.0
+                p_ws = float(row["Wholesale"]) if pd.notna(row["Wholesale"]) else 0.0
                 
-    with admin_tab2:
-        if not st.session_state.admin_authenticated:
-            st.warning("🔒 Please enter the correct Admin Password in the sidebar to access configuration controls.")
-        else:
-            st.success("Admin Management Unlocked")
-            # Inventory additions/deletions loop layout options can stay right here securely...
+                item_col1, item_col2, item_col3, item_col4 = st.columns([2.5, 1, 1, 0.8], vertical_alignment="center")
+                with item_col1: st.markdown(f"**{p_name}**")
+                with item_col2: st.markdown(f"₱{p_price:,.2f}")
+                with item_col3: st.markdown(f"₱{p_ws:,.2f}")
+                with item_col4:
+                    if st.button("➕ Add", key=f"register_add_{idx}"):
+                        st.session_state.cart[p_name] = st.session_state.cart.get(p_name, 0) + st.session_state.qty_multiplier
+                        st.session_state.qty_multiplier = 1
+                        st.rerun()
+
+        with cart_col:
+            st.subheader("🧾 Active Counter Transaction")
+            if not st.session_state.cart:
+                st.info("No items scanned yet.")
+                total_bill = 0.0
+            else:
+                total_bill = 0.0
+                items_to_remove = []
+                for name, qty in list(st.session_state.cart.items()):
+                    item_data = df[df["Product name"] == name].iloc[0]
+                    r_price = float(item_data["Unit Price"]) if pd.notna(item_data["Unit Price"]) else 0.0
+                    w_price = float(item_data["Wholesale"]) if pd.notna(item_data["Wholesale"]) else r_price
+                    ws_target = get_wholesale_threshold(name)
+                    is_ws = ws_target is not None and qty >= ws_target
+                    price = w_price if is_ws else r_price
+                    subtotal = price * qty
+                    total_bill += subtotal
+                    
+                    rc1, rc2, rc3 = st.columns([2.2, 0.8, 0.5])
+                    with rc1: st.markdown(f"**{name}** x{qty}{' (WS)' if is_ws else ''}")
+                    with rc2: st.markdown(f"₱{subtotal:,.2f}")
+                    with rc3:
+                        if st.button("❌", key=f"reg_del_{name}"): items_to_remove.append(name)
+                
+                for name in items_to_remove:
+                    del st.session_state.cart[name]; st.rerun()
+                    
+                st.markdown(f"## Total: ₱{total_bill:,.2f}")
+                cash_rec = st.number_input("Cash Tendered:", min_value=0.0, step=20.0)
+                if cash_rec > 0:
+                    change = cash_rec - total_bill
+                    if change >= 0: st.success(f"Change: ₱{change:,.2f}")
+                    else: st.error(f"Kulang: ₱{abs(change):,.2f}")
+                    
+                if st.button("✅ Log & Clear Transaction", type="primary", use_container_width=True):
+                    st.session_state.cart = {}
+                    st.success("Transaction Complete!")
+                    st.rerun()
 
 # ==========================================================
 # 📱 VIEW 2: CLEAN ONLINE CUSTOMER SHOPPING SCREEN (Default)
@@ -159,7 +287,6 @@ else:
                 st.markdown(f"**Retail:** ₱{p_price:,.2f}")
                 st.markdown(f"**Wholesale:** ₱{p_ws:,.2f}")
             with item_col3:
-                # Cleaner simple increment system for regular customers
                 item_qty = st.number_input("Qty:", min_value=1, value=1, step=1, key=f"cust_qty_{idx}")
                 if st.button("🛍️ Add", key=f"add_cust_{idx}", use_container_width=True):
                     st.session_state.cart[p_name] = st.session_state.cart.get(p_name, 0) + item_qty
@@ -189,7 +316,7 @@ else:
                 receipt_plain_text += f"• {current_qty}x {name} = ₱{subtotal:,.2f}\n"
                 
                 rc1, rc2, rc3 = st.columns([2.0, 1.0, 0.5])
-                with rc1: st.markdown(f"**{name}**\n x{current_qty}{' (✨ Wholesale Price Active)' if is_wholesale else ''}")
+                with rc1: st.markdown(f"**{name}**\n x{current_qty}")
                 with rc2: st.markdown(f"**₱{subtotal:,.2f}**")
                 with rc3:
                     if st.button("❌", key=f"del_cust_{name}"): items_to_remove.append(name)
@@ -210,7 +337,7 @@ else:
             pay_method = st.selectbox("Choose Payment Mode:", ["Cash on Pickup / COD", "GCash Online Transfer"])
             gcash_ref = ""
             if pay_method == "GCash Online Transfer":
-                st.info("Please send GCash payment to: **0912-345-6789 (SUSANA M.)**")
+                st.info("Please send GCash payment to: **0912-345-6789**")
                 gcash_ref = st.text_input("Enter 13-digit GCash Reference Number:")
 
             submit_ready = bool(cust_name)
