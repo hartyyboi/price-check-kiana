@@ -14,6 +14,8 @@ if "cart" not in st.session_state:
     st.session_state.cart = {}
 if "qty_multiplier" not in st.session_state:
     st.session_state.qty_multiplier = 1
+if "app_mode" not in st.session_state:
+    st.session_state.app_mode = "Price Checker"
 
 # 1. Load Data
 @st.cache_data(ttl=5)
@@ -53,6 +55,19 @@ def get_wholesale_threshold(product_name):
         return int(rule.iloc[0]["Target Qty"])
     return None
 
+# MODE SELECTOR TABS AT THE TOP
+m_col1, m_col2, _ = st.columns([1.5, 2, 5])
+with m_col1:
+    if st.button("🔍 Price Checker", use_container_width=True, type="primary" if st.session_state.app_mode == "Price Checker" else "secondary"):
+        st.session_state.app_mode = "Price Checker"
+        st.rerun()
+with m_col2:
+    if st.button("💪 Calculator Steroids (POS)", use_container_width=True, type="primary" if st.session_state.app_mode == "Calculator Steroids" else "secondary"):
+        st.session_state.app_mode = "Calculator Steroids"
+        st.rerun()
+
+st.markdown("---")
+
 # 2. Sidebar - Admin Access Setup
 st.sidebar.header("🔐 Access Control")
 admin_mode = False
@@ -63,45 +78,47 @@ if pwd_input == ADMIN_PASSWORD:
 elif pwd_input != "":
     st.sidebar.error("Incorrect password")
 
-# Layout Split: Left for Product List, Right for Cart Panel
-main_col, cart_col = st.columns([1.8, 1.2])
+# Adjust Layout depending on Selected Mode
+if st.session_state.app_mode == "Calculator Steroids":
+    main_col, cart_col = st.columns([1.8, 1.2])
+else:
+    main_col = st.container() # Full screen center width for simple price checking
 
 with main_col:
-    # Horizontal shortcut buttons for the pre-selector multiplier
-    s_col1, s_col2, s_col3, s_col4, s_col5 = st.columns([1, 1, 1, 1, 2])
-    with s_col1:
-        if st.button("x1", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 1 else "primary"):
-            st.session_state.qty_multiplier = 1
-            st.rerun()
-    with s_col2:
-        if st.button("x6", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 6 else "primary"):
-            st.session_state.qty_multiplier = 6
-            st.rerun()
-    with s_col3:
-        if st.button("x10", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 10 else "primary"):
-            st.session_state.qty_multiplier = 10
-            st.rerun()
-    with s_col4:
-        if st.button("x12", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 12 else "primary"):
-            st.session_state.qty_multiplier = 12
-            st.rerun()
-    with s_col5:
-        # Dynamic custom option field that updates automatically when shortcut buttons are pressed
-        custom_mult = st.number_input(
-            "Custom Qty:", 
-            min_value=1, 
-            value=int(st.session_state.qty_multiplier), 
-            step=1, 
-            key=f"custom_multiplier_input_{st.session_state.qty_multiplier}"
-        )
-        if custom_mult != st.session_state.qty_multiplier:
-            st.session_state.qty_multiplier = custom_mult
-            st.rerun()
+    # ONLY SHOW MULTIPLIERS IF ON CALCULATOR STEROIDS MODE
+    if st.session_state.app_mode == "Calculator Steroids":
+        s_col1, s_col2, s_col3, s_col4, s_col5 = st.columns([1, 1, 1, 1, 2])
+        with s_col1:
+            if st.button("x1", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 1 else "primary"):
+                st.session_state.qty_multiplier = 1
+                st.rerun()
+        with s_col2:
+            if st.button("x6", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 6 else "primary"):
+                st.session_state.qty_multiplier = 6
+                st.rerun()
+        with s_col3:
+            if st.button("x10", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 10 else "primary"):
+                st.session_state.qty_multiplier = 10
+                st.rerun()
+        with s_col4:
+            if st.button("x12", use_container_width=True, type="secondary" if st.session_state.qty_multiplier != 12 else "primary"):
+                st.session_state.qty_multiplier = 12
+                st.rerun()
+        with s_col5:
+            custom_mult = st.number_input(
+                "Custom Qty:", 
+                min_value=1, 
+                value=int(st.session_state.qty_multiplier), 
+                step=1, 
+                key=f"custom_multiplier_input_{st.session_state.qty_multiplier}"
+            )
+            if custom_mult != st.session_state.qty_multiplier:
+                st.session_state.qty_multiplier = custom_mult
+                st.rerun()
 
-    # REAL-TIME QUANTITY INDICATOR
-    st.info(f"🚀 **Active Multiplier Mode:** Tapping '➕ Add' below will add **{st.session_state.qty_multiplier} pc(s)** of that product.")
+        st.info(f"🚀 **Active Multiplier Mode:** Tapping '➕ Add' below will add **{st.session_state.qty_multiplier} pc(s)** of that product.")
+        st.markdown("---")
     
-    st.markdown("---")
     search_query = st.text_input("Search by Product Name...", placeholder="Type item name here...", key="staff_search")
 
     if search_query:
@@ -118,82 +135,91 @@ with main_col:
         ws_target = get_wholesale_threshold(p_name)
         rule_tag = f" (Wholesale @ {ws_target}+ pcs)" if ws_target else ""
 
-        item_col1, item_col2, item_col3, item_col4 = st.columns([2.5, 1, 1, 0.8])
+        # Dynamic widths depending on if we need the "+ Add" button space
+        if st.session_state.app_mode == "Calculator Steroids":
+            item_col1, item_col2, item_col3, item_col4 = st.columns([2.5, 1, 1, 0.8])
+        else:
+            item_col1, item_col2, item_col3 = st.columns([3.5, 1.2, 1.2])
+            
         with item_col1:
             st.markdown(f"**{p_name}** *{rule_tag}*")
         with item_col2:
             st.markdown(f"Retail: ₱{p_price:,.2f}")
         with item_col3:
             st.markdown(f"WS: ₱{p_ws:,.2f}")
-        with item_col4:
-            if st.button("➕ Add", key=f"add_{idx}"):
-                add_amount = st.session_state.qty_multiplier
-                if p_name in st.session_state.cart:
-                    st.session_state.cart[p_name] += add_amount
-                else:
-                    st.session_state.cart[p_name] = add_amount
+            
+        if st.session_state.app_mode == "Calculator Steroids":
+            with item_col4:
+                if st.button("➕ Add", key=f"add_{idx}"):
+                    add_amount = st.session_state.qty_multiplier
+                    if p_name in st.session_state.cart:
+                        st.session_state.cart[p_name] += add_amount
+                    else:
+                        st.session_state.cart[p_name] = add_amount
+                    
+                    st.toast(f"Added {add_amount}x {p_name}!")
+                    st.session_state.qty_multiplier = 1
+                    st.rerun()
+
+# 3. Cart Panel (Only shows up in Calculator Steroids mode)
+if st.session_state.app_mode == "Calculator Steroids":
+    with cart_col:
+        st.subheader("🛒 Current Order Receipt")
+        
+        if not st.session_state.cart:
+            st.info("Cart is empty.")
+            total_bill = 0.0
+        else:
+            total_bill = 0.0
+            items_to_remove = []
+            
+            for name, current_qty in list(st.session_state.cart.items()):
+                item_data = df[df["Product name"] == name].iloc[0]
+                r_price = float(item_data["Unit Price"]) if pd.notna(item_data["Unit Price"]) else 0.0
+                w_price = float(item_data["Wholesale"]) if pd.notna(item_data["Wholesale"]) else r_price
                 
-                st.toast(f"Added {add_amount}x {p_name}!")
+                ws_target = get_wholesale_threshold(name)
+                is_wholesale = ws_target is not None and current_qty >= ws_target
+                active_price = w_price if is_wholesale else r_price
+                
+                subtotal = active_price * current_qty
+                total_bill += subtotal
+                
+                rc1, rc2, rc3 = st.columns([2.2, 0.8, 0.5])
+                with rc1:
+                    badge = " (✨ WS)" if is_wholesale else ""
+                    st.markdown(f"**{name}** x{current_qty}{badge}")
+                    st.caption(f"₱{active_price:,.2f} per pc")
+                with rc2:
+                    st.markdown(f"**₱{subtotal:,.2f}**")
+                with rc3:
+                    if st.button("❌", key=f"del_{name}"):
+                        items_to_remove.append(name)
+                st.markdown("<hr style='margin: 4px 0px; border-top: 1px dashed #bbb;'>", unsafe_allow_html=True)
+                        
+            for name in items_to_remove:
+                del st.session_state.cart[name]
+                st.rerun()
+                
+            st.markdown(f"### 🧾 Total Bill: ₱{total_bill:,.2f}")
+            
+            cash_received = st.number_input("💵 Cash Received:", min_value=0.0, step=20.0, value=0.0)
+            if cash_received > 0:
+                change = cash_received - total_bill
+                if change >= 0:
+                    change_text = f"### 🪙 Change: ₱{change:,.2f}"
+                    st.success(change_text)
+                else:
+                    short_amount = abs(change)
+                    short_text = f"⚠️ Kulang ng: ₱{short_amount:,.2f}"
+                    st.error(short_text)
+                    
+            if st.button("✅ Clear / New Transaction", type="primary", use_container_width=True):
+                st.session_state.cart = {}
                 st.session_state.qty_multiplier = 1
                 st.rerun()
 
-with cart_col:
-    st.subheader("🛒 Current Order Receipt")
-    
-    if not st.session_state.cart:
-        st.info("Cart is empty.")
-        total_bill = 0.0
-    else:
-        total_bill = 0.0
-        items_to_remove = []
-        
-        for name, current_qty in list(st.session_state.cart.items()):
-            item_data = df[df["Product name"] == name].iloc[0]
-            r_price = float(item_data["Unit Price"]) if pd.notna(item_data["Unit Price"]) else 0.0
-            w_price = float(item_data["Wholesale"]) if pd.notna(item_data["Wholesale"]) else r_price
-            
-            ws_target = get_wholesale_threshold(name)
-            is_wholesale = ws_target is not None and current_qty >= ws_target
-            active_price = w_price if is_wholesale else r_price
-            
-            subtotal = active_price * current_qty
-            total_bill += subtotal
-            
-            rc1, rc2, rc3 = st.columns([2.2, 0.8, 0.5])
-            with rc1:
-                badge = " (✨ WS)" if is_wholesale else ""
-                st.markdown(f"**{name}** x{current_qty}{badge}")
-                st.caption(f"₱{active_price:,.2f} per pc")
-            with rc2:
-                st.markdown(f"**₱{subtotal:,.2f}**")
-            with rc3:
-                if st.button("❌", key=f"del_{name}"):
-                    items_to_remove.append(name)
-            st.markdown("<hr style='margin: 4px 0px; border-top: 1px dashed #bbb;'>", unsafe_allow_html=True)
-                    
-        for name in items_to_remove:
-            del st.session_state.cart[name]
-            st.rerun()
-            
-        st.markdown(f"### 🧾 Total Bill: ₱{total_bill:,.2f}")
-        
-        cash_received = st.number_input("💵 Cash Received:", min_value=0.0, step=20.0, value=0.0)
-        if cash_received > 0:
-            change = cash_received - total_bill
-            if change >= 0:
-                change_text = f"### 🪙 Change: ₱{change:,.2f}"
-                st.success(change_text)
-            else:
-                short_amount = abs(change)
-                short_text = f"⚠️ Kulang ng: ₱{short_amount:,.2f}"
-                st.error(short_text)
-                
-        if st.button("✅ Clear / New Transaction", type="primary", use_container_width=True):
-            st.session_state.cart = {}
-            st.session_state.qty_multiplier = 1
-            st.rerun()
-
-# 3. Admin Access Adjustments Panel
+# 4. Admin Access Adjustments Panel
 if admin_mode:
     st.markdown("---")
     st.subheader("🛠️ Admin Management Panel")
