@@ -67,8 +67,6 @@ elif pwd_input != "":
 main_col, cart_col = st.columns([1.8, 1.2])
 
 with main_col:
-    st.subheader("⚡ 1. Select Quantity First")
-    
     # Horizontal shortcut buttons for the pre-selector multiplier
     s_col1, s_col2, s_col3, s_col4, s_col5 = st.columns([1, 1, 1, 1, 2])
     with s_col1:
@@ -98,7 +96,6 @@ with main_col:
     st.info(f"🚀 **Active Multiplier Mode:** Tapping '➕ Add' below will add **{st.session_state.qty_multiplier} pc(s)** of that product.")
     
     st.markdown("---")
-    st.subheader("🔍 2. Search & Tap Product")
     search_query = st.text_input("Search by Product Name...", placeholder="Type item name here...", key="staff_search")
 
     if search_query:
