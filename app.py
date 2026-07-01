@@ -86,8 +86,14 @@ with main_col:
             st.session_state.qty_multiplier = 12
             st.rerun()
     with s_col5:
-        # Custom option input field
-        custom_mult = st.number_input("Custom Qty:", min_value=1, value=int(st.session_state.qty_multiplier), step=1, key="custom_multiplier_input")
+        # Dynamic custom option field that updates automatically when shortcut buttons are pressed
+        custom_mult = st.number_input(
+            "Custom Qty:", 
+            min_value=1, 
+            value=int(st.session_state.qty_multiplier), 
+            step=1, 
+            key=f"custom_multiplier_input_{st.session_state.qty_multiplier}"
+        )
         if custom_mult != st.session_state.qty_multiplier:
             st.session_state.qty_multiplier = custom_mult
             st.rerun()
