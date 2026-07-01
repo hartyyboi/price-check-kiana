@@ -124,7 +124,6 @@ with main_col:
             st.markdown(f"WS: ₱{p_ws:,.2f}")
         with item_col4:
             if st.button("➕ Add", key=f"add_{idx}"):
-                # Add using the current active preset multiplier
                 add_amount = st.session_state.qty_multiplier
                 if p_name in st.session_state.cart:
                     st.session_state.cart[p_name] += add_amount
@@ -132,7 +131,6 @@ with main_col:
                     st.session_state.cart[p_name] = add_amount
                 
                 st.toast(f"Added {add_amount}x {p_name}!")
-                # Reset multiplier back to 1 for the next item choice
                 st.session_state.qty_multiplier = 1
                 st.rerun()
 
@@ -146,7 +144,6 @@ with cart_col:
         total_bill = 0.0
         items_to_remove = []
         
-        # Super clean, consolidated receipt-style formatting layout
         for name, current_qty in list(st.session_state.cart.items()):
             item_data = df[df["Product name"] == name].iloc[0]
             r_price = float(item_data["Unit Price"]) if pd.notna(item_data["Unit Price"]) else 0.0
@@ -159,7 +156,6 @@ with cart_col:
             subtotal = active_price * current_qty
             total_bill += subtotal
             
-            # 1-Row clean summary layout for the order panel
             rc1, rc2, rc3 = st.columns([2.2, 0.8, 0.5])
             with rc1:
                 badge = " (✨ WS)" if is_wholesale else ""
@@ -182,23 +178,4 @@ with cart_col:
         if cash_received > 0:
             change = cash_received - total_bill
             if change >= 0:
-                st.success(f"### 🪙 Change: ₱{change:,.2f}")
-            else:
-                st.error(f"⚠️ Kulang ng: ₱{abs(change):,.2f}")
-                
-        if st.button("✅ Clear / New Transaction", type="primary", use_container_width=True):
-            st.session_state.cart = {}
-            st.session_state.qty_multiplier = 1
-            st.rerun()
-
-# 3. Admin Access Adjustments Panel
-if admin_mode:
-    st.markdown("---")
-    st.subheader("🛠️ Admin Management Panel")
-    action = st.radio("Choose Action:", ["Update Existing Price", "Wholesale Rules Configuration", "Add New Product", "Delete Product"], horizontal=True)
-    
-    if action == "Wholesale Rules Configuration":
-        st.markdown("#### 📦 Set Custom Wholesale Target Limits")
-        rule_search = st.text_input("Search product for rule adjustment:", key="rule_search")
-        all_products = df["Product name"].unique().tolist()
-        filtered_rules =
+                st.success(f"### 🪙 Change:
