@@ -178,4 +178,117 @@ with cart_col:
         if cash_received > 0:
             change = cash_received - total_bill
             if change >= 0:
-                st.success(f"### 🪙 Change:
+                change_text = f"### 🪙 Change: ₱{change:,.2f}"
+                st.success(change_text)
+            else:
+                short_amount = abs(change)
+                short_text = f"⚠️ Kulang ng: ₱{short_amount:,.2f}"
+                st.error(short_text)
+                
+        if st.button("✅ Clear / New Transaction", type="primary", use_container_width=True):
+            st.session_state.cart = {}
+            st.session_state.qty_multiplier = 1
+            st.rerun()
+
+# 3. Admin Access Adjustments Panel
+if admin_mode:
+    st.markdown("---")
+    st.subheader("🛠️ Admin Management Panel")
+    action = st.radio("Choose Action:", ["Update Existing Price", "Wholesale Rules Configuration", "Add New Product", "Delete Product"], horizontal=True)
+    
+    if action == "Wholesale Rules Configuration":
+        st.markdown("#### 📦 Set Custom Wholesale Target Limits")
+        rule_search = st.text_input("Search product for rule adjustment:", key="rule_search")
+        all_products = df["Product name"].unique().tolist()
+        
+        if rule_search:
+            filtered_rules = [p for p in all_products if rule_search.lower() in str(p).lower()]
+        else:
+            filtered_rules = all_products
+        
+        if filtered_rules:
+            selected_rule_product = st.selectbox("Select Target Product:", filtered_rules)
+            existing_rule = df_rules[df_rules["Product name"] == selected_rule_product]
+            current_active = bool(existing_rule.iloc[0]["Active"]) if not existing_rule.empty else False
+            current_target = int(existing_rule.iloc[0]["Target Qty"]) if not existing_rule.empty else 6
+            
+            is_active = st.checkbox("Enable Wholesale Target Quantity Rule?", value=current_active)
+            target_amount = st.number_input("Trigger wholesale pricing at what quantity?", min_value=1, value=current_target, step=1)
+            
+            if st.button("Save Rule Profile", type="primary"):
+                if not existing_rule.empty:
+                    df_rules.loc[df_rules["Product name"] == selected_rule_product, ["Active", "Target Qty"]] = [is_active, target_amount]
+                else:
+                    new_rule_row = pd.DataFrame([{"Product name": selected_rule_product, "Active": is_active, "Target Qty": target_amount}])
+                    df_rules = pd.concat([df_rules, new_rule_row], ignore_index=True)
+                
+                save_data(df, df_rules)
+                st.success(f"Configured wholesale discount logic profile for '{selected_rule_product}'!")
+                st.rerun()
+
+   elif action == "Update Existing Price":
+        admin_search = st.text_input("⌨️ Search item to edit:", key="admin_edit_search")
+        all_products = df["Product name"].unique().tolist()
+        
+        if admin_search:
+            filtered_options = [p for p in all_products if admin_search.lower() in str(p).lower()]
+        else:
+            filtered_options = all_products
+        
+        if filtered_options:
+            product_to_update = st.selectbox("🎯 Select Product:", filtered_options)
+            current_row = df[df["Product name"] == product_to_update].iloc[0]
+            
+            rename_checkbox = st.checkbox("✏️ Rename this product?")
+            new_name = st.text_input("New Name:", value=str(product_to_update)) if rename_checkbox else str(product_to_update)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                new_unit_price = st.number_input("New Unit Price:", value=float(current_row["Unit Price"]) if pd.notna(current_row["Unit Price"]) else 0.0)
+            with col2:
+                new_wholesale = st.number_input("New Wholesale Price:", value=float(current_row["Wholesale"]) if pd.notna(current_row["Wholesale"]) else 0.0)
+                
+            if st.button("Apply Changes"):
+                df.loc[df["Product name"] == product_to_update, ["Product name", "Unit Price", "Wholesale"]] = [new_name, new_unit_price, new_wholesale]
+                save_data(df, df_rules)
+                st.success("Updated successfully!")
+                st.rerun()
+                
+    elif action == "Add New Product":
+        new_name = st.text_input("Product Name:")
+        col1, col2 = st.columns(2)
+        with col1:
+            new_unit_price = st.number_input("Unit Price:", min_value=0.0, value=0.0)
+        with col2:
+            new_wholesale = st.number_input("Wholesale Price:", min_value=0.0, value=0.0)
+            
+        if st.button("Add to Inventory", type="primary"):
+            if new_name.strip() == "":
+                st.error("Product Name cannot be empty!")
+            elif new_name in df["Product name"].values:
+                st.error("This product already exists!")
+            else:
+                new_row = pd.DataFrame([{"Product name": new_name, "Unit Price": new_unit_price, "Wholesale": new_wholesale}])
+                df = pd.concat([df, new_row], ignore_index=True)
+                save_data(df, df_rules)
+                st.success(f"Added '{new_name}' successfully!")
+                st.rerun()
+                
+    elif action == "Delete Product":
+        del_search = st.text_input("⌨️ Search item to delete:", key="admin_del_search")
+        all_products = df["Product name"].unique().tolist()
+        
+        if del_search:
+            filtered_del_options = [p for p in all_products if del_search.lower() in str(p).lower()]
+        else:
+            filtered_del_options = all_products
+        
+        if filtered_del_options:
+            product_to_delete = st.selectbox("Select Product to Remove:", filtered_del_options)
+            st.warning(f"Are you sure you want to completely remove '{product_to_delete}'?")
+            if st.button("Permanently Delete", type="primary"):
+                df = df[df["Product name"] != product_to_delete]
+                df_rules = df_rules[df_rules["Product name"] != product_to_delete]
+                save_data(df, df_rules)
+                st.success(f"Deleted '{product_to_delete}' from inventory.")
+                st.rerun()
