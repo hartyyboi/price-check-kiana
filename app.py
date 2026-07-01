@@ -226,7 +226,7 @@ if admin_mode:
                 st.success(f"Configured wholesale discount logic profile for '{selected_rule_product}'!")
                 st.rerun()
 
-   elif action == "Update Existing Price":
+    elif action == "Update Existing Price":
         admin_search = st.text_input("⌨️ Search item to edit:", key="admin_edit_search")
         all_products = df["Product name"].unique().tolist()
         
