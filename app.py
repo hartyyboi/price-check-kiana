@@ -42,7 +42,7 @@ elif pwd_input != "":
 
 # 3. Main Interface - Staff / Lookup View (Always Available)
 st.subheader("🔍 Staff Lookup")
-search_query = st.text_input("Search by Product Name...", placeholder="Type item name here...")
+search_query = st.text_input("Search by Product Name...", placeholder="Type item name here...", key="staff_search")
 
 # Filter data based on search
 if search_query:
@@ -70,22 +70,50 @@ if admin_mode:
     action = st.radio("Choose Action:", ["Update Existing Price", "Add New Product", "Delete Product"], horizontal=True)
     
     if action == "Update Existing Price":
-        product_to_update = st.selectbox("Select Product to Update:", df["Product name"].unique())
+        # NEW FEATURE: Search field to narrow down product dropdown list
+        admin_search = st.text_input("⌨️ Type here to search for product to edit:", placeholder="Type name to filter list...", key="admin_edit_search")
         
-        # Get current values
-        current_row = df[df["Product name"] == product_to_update].iloc[0]
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            new_unit_price = st.number_input("New Unit Price:", value=float(current_row["Unit Price"]) if pd.notna(current_row["Unit Price"]) else 0.0)
-        with col2:
-            new_wholesale = st.number_input("New Wholesale Price:", value=float(current_row["Wholesale"]) if pd.notna(current_row["Wholesale"]) else 0.0)
+        all_products = df["Product name"].unique().tolist()
+        if admin_search:
+            # Filter dropdown options based on what you typed
+            filtered_options = [p for p in all_products if admin_search.lower() in str(p).lower()]
+        else:
+            filtered_options = all_products
             
-        if st.button("Apply Changes", type="primary"):
-            df.loc[df["Product name"] == product_to_update, ["Unit Price", "Wholesale"]] = [new_unit_price, new_wholesale]
-            save_data(df)
-            st.success(f"Updated '{product_to_update}' successfully!")
-            st.rerun()
+        if not filtered_options:
+            st.warning("No products match your search.")
+            product_to_update = None
+        else:
+            product_to_update = st.selectbox("🎯 Select Product to Update:", filtered_options)
+        
+        if product_to_update:
+            # Get current values
+            current_row = df[df["Product name"] == product_to_update].iloc[0]
+            
+            # NEW FEATURE: Rename functionality checkbox
+            rename_checkbox = st.checkbox("✏️ Rename this product?")
+            if rename_checkbox:
+                new_name = st.text_input("Enter New Product Name:", value=str(product_to_update))
+            else:
+                new_name = str(product_to_update)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                new_unit_price = st.number_input("New Unit Price:", value=float(current_row["Unit Price"]) if pd.notna(current_row["Unit Price"]) else 0.0)
+            with col2:
+                new_wholesale = st.number_input("New Wholesale Price:", value=float(current_row["Wholesale"]) if pd.notna(current_row["Wholesale"]) else 0.0)
+                
+            if st.button("Apply Changes", type="primary"):
+                if rename_checkbox and new_name.strip() == "":
+                    st.error("Product Name cannot be empty!")
+                elif rename_checkbox and new_name != product_to_update and new_name in df["Product name"].values:
+                    st.error("A product with that new name already exists!")
+                else:
+                    # Update row values
+                    df.loc[df["Product name"] == product_to_update, ["Product name", "Unit Price", "Wholesale"]] = [new_name, new_unit_price, new_wholesale]
+                    save_data(df)
+                    st.success(f"Updated '{product_to_update}' successfully!")
+                    st.rerun()
 
     elif action == "Add New Product":
         new_name = st.text_input("Product Name:")
@@ -108,11 +136,25 @@ if admin_mode:
                 st.rerun()
                 
     elif action == "Delete Product":
-        product_to_delete = st.selectbox("Select Product to Remove:", df["Product name"].unique())
-        st.warning(f"Are you sure you want to completely remove '{product_to_delete}'?")
+        # Search feature added to Delete tab as well for convenience
+        del_search = st.text_input("⌨️ Type here to search for product to delete:", placeholder="Type name to filter list...", key="admin_del_search")
+        all_products = df["Product name"].unique().tolist()
         
-        if st.button("Permanently Delete", type="primary"):
-            df = df[df["Product name"] != product_to_delete]
-            save_data(df)
-            st.success(f"Deleted '{product_to_delete}' from inventory.")
-            st.rerun()
+        if del_search:
+            filtered_del_options = [p for p in all_products if del_search.lower() in str(p).lower()]
+        else:
+            filtered_del_options = all_products
+            
+        if not filtered_del_options:
+            st.warning("No products match your search.")
+            product_to_delete = None
+        else:
+            product_to_delete = st.selectbox("Select Product to Remove:", filtered_del_options)
+            
+        if product_to_delete:
+            st.warning(f"Are you sure you want to completely remove '{product_to_delete}'?")
+            if st.button("Permanently Delete", type="primary"):
+                df = df[df["Product name"] != product_to_delete]
+                save_data(df)
+                st.success(f"Deleted '{product_to_delete}' from inventory.")
+                st.rerun()
